@@ -12,6 +12,7 @@ const POLLS_HEADERS = [
   "organizer_timezone",
   "organizer_token_hash",
   "show_group_counts",
+  "duration_minutes",
 ];
 const RESPONSES_HEADERS = [
   "poll_id",
@@ -21,6 +22,7 @@ const RESPONSES_HEADERS = [
   "linked_must_attend",
   "submitted_at",
 ];
+const CALENDAR_HEADERS = ["poll_id", "participant_name", "token_hash", "created_at"];
 const FEEDBACK_HEADERS = [
   "submitted_at",
   "working_well",
@@ -101,6 +103,9 @@ async function getPollsSheet(doc) {
 async function getResponsesSheet(doc) {
   return ensureSheet(doc, "Responses", RESPONSES_HEADERS);
 }
+async function getCalendarSheet(doc) {
+  return ensureSheet(doc, "CalendarTokens", CALENDAR_HEADERS);
+}
 
 async function getFeedbackSheet(doc) {
   return ensureSheet(doc, "Feedback", FEEDBACK_HEADERS);
@@ -114,4 +119,4 @@ function genId(len = 8) {
   return out;
 }
 
-module.exports = { getDoc, getPollsSheet, getResponsesSheet, getFeedbackSheet, genId };
+module.exports = { getDoc, getPollsSheet, getResponsesSheet, getCalendarSheet, getFeedbackSheet, genId };
