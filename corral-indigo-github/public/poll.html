@@ -56,8 +56,17 @@ async function updatePoll(changes) {
 }
 function saveError(err) { alert(`Could not save: ${err.message}`); }
 async function copyText(value) {
-  try { await navigator.clipboard.writeText(value); }
-  catch { window.prompt("Copy this message:", value); }
+  try { await navigator.clipboard.writeText(value); return true; }
+  catch { window.prompt("Copy this message:", value); return false; }
+}
+async function copyWithFeedback(button, value) {
+  const copied = await copyText(value);
+  if (!copied) return;
+  const original = button.dataset.originalLabel || button.textContent;
+  button.dataset.originalLabel = original;
+  button.textContent = "✓ Copied";
+  clearTimeout(button.copyResetTimer);
+  button.copyResetTimer = setTimeout(() => { if (button.isConnected) button.textContent = original; }, 2400);
 }
 function mailDraft(subject, body) { location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
 function reminderText(names) {
@@ -132,28 +141,69 @@ function renderParticipantView() {
         </div>
       </div>
 
-      <div id="slotForms"></div>
+      <div class="slot-chooser-head"><div><strong>Proposed times</strong><p>Swipe sideways or use the arrows. Choose times you can actually attend.</p></div><span id="answerProgress">0 of ${slots.length} answered</span></div>
+      <div class="slot-carousel" id="slotForms" role="region" aria-label="Proposed meeting times" tabindex="0"></div>
+      <div class="slot-carousel-nav"><button class="ghost" id="prevSlotBtn" type="button" aria-label="Previous proposed time">← Previous</button><span id="slotPosition" aria-live="polite">Time 1 of ${slots.length}</span><button class="ghost" id="nextSlotBtn" type="button" aria-label="Next proposed time">Next →</button></div>
 
       <div class="field-error" id="submitError" style="display:none; margin-bottom:12px;"></div>
       <button class="primary" id="submitBtn" type="button" ${closed ? "disabled" : ""}>${closed ? "Responses closed" : "Submit response"}</button>
       <div id="successMsg" style="display:none; margin-top:14px; color:var(--teal); font-size:14px;"></div>
+      <div id="groupOverview" aria-live="polite"></div>
     </div>
   `;
 
   const slotForms = document.getElementById("slotForms");
-  slots.forEach((slot) => {
-    const block = document.createElement("div");
-    block.className = "field-block";
+  const cards = [];
+  slots.forEach((slot, index) => {
+    const block = document.createElement("fieldset");
+    block.className = "slot-card";
+    block.dataset.slotId = slot.id;
     block.innerHTML = `
-      <label class="field-label">${escapeHtml(formatViewerLocal(slot.iso))}</label>
-      <div class="radio-group">
-        <label class="radio-option"><input type="radio" name="resp-${slot.id}" value="yes" ${closed ? "disabled" : ""}> Yes</label>
-        <label class="radio-option"><input type="radio" name="resp-${slot.id}" value="if_needed" ${closed ? "disabled" : ""}> Maybe</label>
-        <label class="radio-option"><input type="radio" name="resp-${slot.id}" value="no" ${closed ? "disabled" : ""}> No</label>
+      <legend>Time ${index + 1} of ${slots.length}</legend>
+      <div class="slot-date">${escapeHtml(formatViewerLocal(slot.iso))}</div>
+      <div class="group-count" data-count-slot="${escapeHtml(slot.id)}"></div>
+      <div class="choice-row" role="group" aria-label="Availability for ${escapeHtml(formatViewerLocal(slot.iso))}">
+        <label class="choice yes"><input type="radio" name="resp-${slot.id}" value="yes" ${closed ? "disabled" : ""}><span><b aria-hidden="true">✓</b> Yes</span></label>
+        <label class="choice maybe"><input type="radio" name="resp-${slot.id}" value="if_needed" ${closed ? "disabled" : ""}><span><b aria-hidden="true">◔</b> Maybe</span></label>
+        <label class="choice no"><input type="radio" name="resp-${slot.id}" value="no" ${closed ? "disabled" : ""}><span><b aria-hidden="true">×</b> No</span></label>
       </div>
     `;
     slotForms.appendChild(block);
+    cards.push(block);
   });
+  renderGroupCounts();
+  if (!window.corralParticipantRefresh && pollData.showGroupCounts) {
+    window.corralParticipantRefresh = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {cache:"no-store"});
+        if (res.ok) { pollData = await res.json(); renderGroupCounts(document.getElementById("successMsg")?.style.display === "block"); }
+      } catch (_) { /* Keep the last visible totals until the next refresh. */ }
+    }, 30000);
+  }
+
+  function activeIndex() {
+    if (!cards.length) return 0;
+    return cards.reduce((best, card, index) =>
+      Math.abs(card.offsetLeft - cards[0].offsetLeft - slotForms.scrollLeft) < Math.abs(cards[best].offsetLeft - cards[0].offsetLeft - slotForms.scrollLeft) ? index : best, 0);
+  }
+  function updatePosition() {
+    const index = activeIndex();
+    document.getElementById("slotPosition").textContent = `Time ${index + 1} of ${slots.length}`;
+    document.getElementById("prevSlotBtn").disabled = index === 0;
+    document.getElementById("nextSlotBtn").disabled = index === slots.length - 1;
+  }
+  function goToCard(index) {
+    cards[Math.max(0, Math.min(cards.length - 1, index))]?.scrollIntoView({behavior:"smooth", block:"nearest", inline:"start"});
+  }
+  function updateProgress() {
+    const answered = slots.filter(slot => document.querySelector(`input[name="resp-${slot.id}"]:checked`)).length;
+    document.getElementById("answerProgress").textContent = `${answered} of ${slots.length} answered`;
+  }
+  slotForms.addEventListener("scroll", updatePosition, {passive:true});
+  slotForms.addEventListener("change", updateProgress);
+  document.getElementById("prevSlotBtn").onclick = () => goToCard(activeIndex() - 1);
+  document.getElementById("nextSlotBtn").onclick = () => goToCard(activeIndex() + 1);
+  updatePosition(); updateProgress();
 
   if (closed) return;
 
@@ -208,6 +258,7 @@ async function submitResponse() {
     if (!checked) {
       submitError.textContent = `Please answer for ${formatViewerLocal(slot.iso)}.`;
       submitError.style.display = "block";
+      document.querySelector(`.slot-card[data-slot-id="${slot.id}"]`)?.scrollIntoView({behavior:"smooth", block:"center", inline:"start"});
       return;
     }
     responses[slot.id] = checked.value;
@@ -235,6 +286,10 @@ async function submitResponse() {
       ? `✓ Response recorded, linked as Must-Attend participant "${data.linkedMustAttend}".`
       : "✓ Response recorded. Thank you!";
     submitBtn.textContent = "Submitted";
+    try {
+      const latest = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {cache:"no-store"});
+      if (latest.ok) { pollData = await latest.json(); renderGroupCounts(true); }
+    } catch (_) { /* The response was saved; counts can be refreshed later. */ }
   } catch (err) {
     submitError.textContent = err.message;
     submitError.style.display = "block";
@@ -244,6 +299,25 @@ async function submitResponse() {
 }
 
 // ---------------- Organizer view ----------------
+function countLabel(count) {
+  const total = count.yes + count.ifNeeded + count.no;
+  return total ? `<span class="yes">${count.yes} Yes</span><span class="ifn">${count.ifNeeded} Maybe</span><span class="no">${count.no} No</span>` : "No responses yet";
+}
+function renderGroupCounts(showOverview = false) {
+  if (!pollData.showGroupCounts || !pollData.groupCounts) return;
+  for (const slot of pollData.slots) {
+    const target = document.querySelector(`[data-count-slot="${CSS.escape(slot.id)}"]`);
+    if (target) target.innerHTML = `<small>Group availability so far</small><div>${countLabel(pollData.groupCounts[slot.id] || {yes:0, ifNeeded:0, no:0})}</div>`;
+  }
+  if (!showOverview) return;
+  const overview = document.getElementById("groupOverview");
+  if (!overview) return;
+  const ordered = [...pollData.slots].sort((a,b) => {
+    const x = pollData.groupCounts[a.id], y = pollData.groupCounts[b.id];
+    return (2*y.yes+y.ifNeeded) - (2*x.yes+x.ifNeeded) || Date.parse(a.iso)-Date.parse(b.iso);
+  });
+  overview.innerHTML = `<h2>Group availability so far</h2><p>Current responses, ranked by Yes and Maybe votes. The organizer chooses the final time.</p><ol>${ordered.map(s => `<li><strong>${escapeHtml(formatViewerLocal(s.iso))}</strong><div class="group-count">${countLabel(pollData.groupCounts[s.id])}</div></li>`).join("")}</ol>`;
+}
 function renderOrganizerView() {
   const { title, slots, participants } = pollData;
 
@@ -251,11 +325,10 @@ function renderOrganizerView() {
     <div class="masthead">
       <div class="eyebrow">Organizer view<span class="beta-tag">Beta</span></div>
       <h1>${escapeHtml(title)}</h1>
-      <p class="sub">${participants.length} participant${participants.length === 1 ? "" : "s"} have responded across ${slots.length} proposed time${slots.length === 1 ? "" : "s"}. Times shown in your timezone (${escapeHtml(viewerTimezone())}).</p>
-      <p style="font-size:12.5px; color:var(--ink-faint); margin:8px 0 0;">This page's link is the only way to manage this poll — worth keeping it somewhere safe.</p>
+      <p class="sub">Times shown in your timezone (${escapeHtml(viewerTimezone())}).</p>
     </div>
 
-    <div id="finalizedBannerSlot"></div>
+    <div id="decisionSummary" class="decision-summary" aria-live="polite"></div>
 
     <div class="ruled-section">
       <h2>Share this poll</h2>
@@ -263,12 +336,19 @@ function renderOrganizerView() {
       <div class="share-actions"><button class="ghost" id="copyParticipantLink" type="button">Copy participant link</button><button class="ghost" id="copyOrganizerLink" type="button">Copy organizer link</button><button class="ghost" id="emailSelfLink" type="button">✉ Email link to myself</button></div>
       <details class="help-details"><summary>How do links and reminders work?</summary>
         <div class="help-grid">
-          <p><strong>Participant link</strong><br>Send this in your own email or group chat. People enter their names and availability; they cannot see the response table.</p>
+          <p><strong>Participant link</strong><br>Send this in your own email or group chat. People enter their names and availability. They can see group totals when enabled, but not the named response table.</p>
           <p><strong>Organizer link</strong><br>Only someone with this private link can view all responses or manage the poll. It is saved in this browser, but email or bookmark it for use on another device. A lost link cannot be recovered.</p>
           <p><strong>Reminder</strong><br>When a Must-Attend person has not replied, use the buttons below to copy a ready-to-paste message or open an email draft. You choose the recipients. Corral does not collect email addresses or send the message itself.</p>
         </div>
       </details>
       <div id="reminderControls"></div>
+    </div>
+    <details class="manage-details">
+      <summary><span><strong>Manage poll</strong><small>Deadline, Must-Attend people, and proposed times</small></span><span class="manage-chevron" aria-hidden="true">⌄</span></summary>
+    <div class="ruled-section">
+      <h2>Group availability</h2>
+      <p class="desc">Show Yes, Maybe, and No totals to participants as they vote. Individual names stay private.</p>
+      <label class="group-setting"><input type="checkbox" id="showGroupCounts" ${pollData.showGroupCounts ? "checked" : ""}> Show group counts to participants</label>
     </div>
     <div class="ruled-section">
       <h2>Response deadline</h2>
@@ -289,7 +369,7 @@ function renderOrganizerView() {
     </div>
 
     <div class="ruled-section"><h2>Propose another time</h2><p class="desc">Existing responses stay intact. Participants can answer the new time by submitting again.</p><div class="row"><input type="datetime-local" id="newSlotInput"><button class="ghost" id="addTimeBtn" type="button">Add time</button></div></div>
-    <div id="banner"></div>
+    </details>
 
     <div class="ruled-section">
       <h2>Responses</h2>
@@ -299,7 +379,8 @@ function renderOrganizerView() {
 
     <div class="ruled-section" style="border-bottom:none; padding-bottom:0;">
       <h2>Recommendations</h2>
-      <p class="desc">Numbers are always shown alongside the reasoning — nothing is hidden.</p>
+      <p class="desc">Compare the times and lock one in when you're ready.</p>
+      <details class="ranking-help"><summary>How are times ranked?</summary><p>Yes counts twice and Maybe counts once. A Must-Attend No rules out a recommendation; missing Must-Attend answers keep it provisional. Equal scores share the same badge. You can still finalize any time.</p></details>
       <div id="slotList"></div>
     </div>
 
@@ -309,13 +390,19 @@ function renderOrganizerView() {
     </p>
   `;
 
-  renderFinalizedBanner();
   renderDeadlineControls();
   renderMustAttendChips();
   renderResults();
   const participantLink = `${location.origin}/poll.html?id=${encodeURIComponent(pollId)}`;
-  document.getElementById("copyParticipantLink").onclick = () => copyText(participantLink);
-  document.getElementById("copyOrganizerLink").onclick = () => copyText(location.href);
+  document.getElementById("showGroupCounts").addEventListener("change", async event => {
+    const checkbox = event.currentTarget;
+    checkbox.disabled = true;
+    try { const updated = await updatePoll({showGroupCounts:checkbox.checked}); pollData.showGroupCounts = updated.showGroupCounts; }
+    catch (err) { checkbox.checked = !checkbox.checked; saveError(err); }
+    finally { checkbox.disabled = false; }
+  });
+  document.getElementById("copyParticipantLink").onclick = event => copyWithFeedback(event.currentTarget, participantLink);
+  document.getElementById("copyOrganizerLink").onclick = event => copyWithFeedback(event.currentTarget, location.href);
   document.getElementById("emailSelfLink").onclick = () => mailDraft("My private Corral organizer link", `Keep this private link to manage “${pollData.title}”:\n\n${location.href}`);
   document.getElementById("addTimeBtn").onclick = async () => {
     const input = document.getElementById("newSlotInput");
@@ -331,10 +418,6 @@ function renderOrganizerView() {
       if (e.key === "Enter") { e.preventDefault(); addMustAttend(); }
     });
   });
-
-  function renderFinalizedBanner() {
-    document.getElementById("finalizedBannerSlot").innerHTML = finalizedBanner(pollData.slots);
-  }
 
   function renderDeadlineControls() {
     const el = document.getElementById("deadlineControls");
@@ -428,14 +511,12 @@ function renderOrganizerView() {
   async function finalizeSlot(slotId) {
     try { await updatePoll({finalizedSlotId:slotId}); } catch (err) { saveError(err); return; }
     pollData.finalizedSlotId = slotId;
-    renderFinalizedBanner();
     renderResults();
   }
 
   async function unfinalize() {
     try { await updatePoll({finalizedSlotId:""}); } catch (err) { saveError(err); return; }
     pollData.finalizedSlotId = null;
-    renderFinalizedBanner();
     renderResults();
   }
 
@@ -518,10 +599,48 @@ function renderOrganizerView() {
     const note = document.createElement("p"); note.textContent = "Send a reminder using your own email app, or copy the message into a group chat. Add recipients yourself.";
     const actions = document.createElement("div"); actions.className = "share-actions";
     const copy = document.createElement("button"); copy.type = "button"; copy.className = "ghost"; copy.textContent = "Copy reminder message";
-    copy.onclick = async () => { await copyText(reminderText(missing)); copy.textContent = "Copied!"; setTimeout(() => copy.textContent = "Copy reminder message", 2500); };
+    copy.onclick = () => copyWithFeedback(copy, reminderText(missing));
     const email = document.createElement("button"); email.type = "button"; email.className = "ghost"; email.textContent = "✉ Open email draft";
     email.onclick = () => mailDraft(`Reminder: ${pollData.title}`, reminderText(missing));
     actions.append(copy, email); box.append(title, note, actions); el.append(box);
+  }
+
+  function renderDecisionSummary(rec) {
+    const el = document.getElementById("decisionSummary");
+    const count = pollData.participants.length;
+    const tally = rec.recommended ? rec.recommended.tally : null;
+    const finalized = pollData.slots.find(slot => slot.id === pollData.finalizedSlotId);
+    let label, title, description, tone = "info";
+    if (finalized) {
+      label = "Meeting confirmed";
+      title = formatViewerLocal(finalized.iso);
+      description = "This time is locked in. You can undo it from the time card below.";
+      tone = "ok";
+    } else if (count === 0) {
+      label = "Waiting for responses";
+      title = "Your poll is ready to share";
+      description = "Copy the participant link below. Results will appear here as people respond.";
+    } else if (rec.pending) {
+      label = "Leading so far";
+      title = rec.bestCompromise ? formatViewerLocal(rec.bestCompromise.iso) : "Awaiting responses";
+      description = "Some Must-Attend answers are still missing, so there is no recommendation yet.";
+    } else if (rec.noFullyEligible) {
+      label = "Decision needed";
+      title = "No time fits everyone essential";
+      description = "Review the conflicts below or propose another time in Manage poll.";
+      tone = "warn";
+    } else if (rec.recommended) {
+      label = pollData.mustAttend.length ? "Recommended time" : "Best overall time";
+      title = formatViewerLocal(rec.recommended.iso);
+      description = `${tally.yes} Yes · ${tally.ifNeeded} Maybe · ${tally.no} No${pollData.mustAttend.length ? " · All Must-Attend people answered Yes or Maybe" : ""}`;
+      tone = "ok";
+    } else {
+      label = "Responses received";
+      title = "Review the times below";
+      description = "No time has been recommended yet.";
+    }
+    el.className = `decision-summary ${tone}`;
+    el.innerHTML = `<div class="decision-kicker">${escapeHtml(label)}</div><div class="decision-title">${escapeHtml(title)}</div><p>${escapeHtml(description)}</p><div class="decision-footer"><span>${count} participant${count === 1 ? "" : "s"} responded · ${pollData.slots.length} proposed time${pollData.slots.length === 1 ? "" : "s"}</span><a href="#rosterGrid">View responses ↓</a></div>`;
   }
 
   function renderResults() {
@@ -536,35 +655,7 @@ function renderOrganizerView() {
     renderRosterGrid();
     renderReminderControls();
 
-    const banner = document.getElementById("banner");
-    if (pollData.finalizedSlotId) {
-      banner.innerHTML = "";
-    } else if (pollData.slots.length === 0) {
-      banner.innerHTML = "";
-    } else if (rec.pending) {
-      const leading = rec.bestCompromise;
-      banner.innerHTML = `<div class="banner info"><div class="title">Leading so far: ${leading ? escapeHtml(formatViewerLocal(leading.iso)) : "awaiting responses"}</div><div class="body">Awaiting Must-Attend responses before recommending a time.</div></div>`;
-    } else if (rec.noFullyEligible) {
-      banner.innerHTML = `
-        <div class="banner warn">
-          <div class="title">No proposed time works for all Must-Attend participants.</div>
-          <div class="body">Showing the closest alternatives below, ranked by fewest Must-Attend conflicts, then overall attendance. You'll need to pick a trade-off.</div>
-        </div>`;
-    } else if (pollData.mustAttend.length > 0 && rec.recommended) {
-      banner.innerHTML = `
-        <div class="banner ok">
-          <div class="title">★ ${escapeHtml(formatViewerLocal(rec.recommended.iso))} is recommended.</div>
-          <div class="body">All Must-Attend participants replied Yes or Maybe. Check the conditional names below before finalizing.</div>
-        </div>`;
-    } else if (rec.recommended) {
-      banner.innerHTML = `
-        <div class="banner info">
-          <div class="title">${escapeHtml(formatViewerLocal(rec.recommended.iso))} has the best overall availability.</div>
-          <div class="body">No Must-Attend participants are set, so this is ranked by overall Yes/Maybe/No responses only.</div>
-        </div>`;
-    } else {
-      banner.innerHTML = "";
-    }
+    renderDecisionSummary(rec);
 
     const slotList = document.getElementById("slotList");
     if (pollData.slots.length === 0) {
