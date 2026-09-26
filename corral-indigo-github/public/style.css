@@ -440,6 +440,8 @@ h1,h2,.serif { font-family:inherit; }
 .quick-start input:focus { outline:none; }
 .quick-start button { background:#4f46e5; border:0; color:white; border-radius:11px; padding:13px 20px; font-weight:700; font-size:14px; white-space:nowrap; cursor:pointer; }
 .quick-start button:hover { background:#4338ca; }
+.quick-start .hero-cta { display:inline-flex; align-items:center; justify-content:center; gap:8px; background:#4f46e5; color:white; text-decoration:none; border-radius:11px; padding:14px 24px; font-weight:700; font-size:15px; box-shadow:0 8px 18px #4f46e53b; }
+.quick-start .hero-cta:hover { background:#4338ca; }
 .hero-assurance { color:#78859a; font-size:13px; margin-top:17px; display:flex; gap:8px; align-items:center; }
 .hero-assurance span { color:#13a780; font-size:18px; }
 .hero-visual { position:relative; min-width:0; }
@@ -509,6 +511,9 @@ button.primary { background:#4f46e5; border-radius:10px; }.button.primary:hover,
 #groupOverview:empty { display:none; }
 #groupOverview ol { padding-left:24px; }
 #groupOverview li { padding:10px 0; border-bottom:1px solid #e4e7ef; }
+.calendar-panel { margin-top:18px; padding:18px; border:1px solid #c7d2fe; border-radius:14px; background:#eef2ff; font-size:14px; }
+.calendar-panel p { color:#526078; line-height:1.5; margin:8px 0; }
+.calendar-panel .calendar-open { display:inline-flex; align-items:center; padding:10px 14px; border:1px solid #c9d2e3; border-radius:8px; background:#fff; color:#121a33; text-decoration:none; font-weight:600; }
 .slot-date { font-size:17px; font-weight:750; letter-spacing:-.02em; line-height:1.3; min-height:44px; margin:0 0 15px; }
 .choice-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
 .choice { position:relative; display:block; cursor:pointer; min-width:0; }

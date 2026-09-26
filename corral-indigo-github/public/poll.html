@@ -148,6 +148,7 @@ function renderParticipantView() {
       <div class="field-error" id="submitError" style="display:none; margin-bottom:12px;"></div>
       <button class="primary" id="submitBtn" type="button" ${closed ? "disabled" : ""}>${closed ? "Responses closed" : "Submit response"}</button>
       <div id="successMsg" style="display:none; margin-top:14px; color:var(--teal); font-size:14px;"></div>
+      <div id="calendarPanel" class="calendar-panel" style="display:none;"></div>
       <div id="groupOverview" aria-live="polite"></div>
     </div>
   `;
@@ -286,6 +287,13 @@ async function submitResponse() {
       ? `✓ Response recorded, linked as Must-Attend participant "${data.linkedMustAttend}".`
       : "✓ Response recorded. Thank you!";
     submitBtn.textContent = "Submitted";
+    if (data.calendarToken) {
+      const url = `${location.origin}/api/calendar?token=${encodeURIComponent(data.calendarToken)}`;
+      const panel = document.getElementById("calendarPanel");
+      panel.style.display = "block";
+      panel.innerHTML = `<strong>Add my Yes times to my calendar</strong><p>Subscribe to this private calendar link to see tentative holds. When the organizer confirms a time, the other holds disappear after your calendar refreshes. Keep this link private.</p><div class="share-actions"><button class="ghost" id="copyCalendarBtn" type="button">Copy calendar link</button><a class="ghost calendar-open" href="${escapeHtml(url.replace(/^https:/, "webcal:"))}">Open calendar app</a><a class="ghost calendar-open" href="${escapeHtml(url + '&download=1')}">Download .ics file</a></div><p class="desc">For Google Calendar, use “Add calendar → From URL” on its website and paste the copied link. A downloaded file is a one-time copy; its unused holds must be removed manually.</p>`;
+      document.getElementById("copyCalendarBtn").onclick = event => copyWithFeedback(event.currentTarget, url);
+    }
     try {
       const latest = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {cache:"no-store"});
       if (latest.ok) { pollData = await latest.json(); renderGroupCounts(true); }
@@ -351,6 +359,11 @@ function renderOrganizerView() {
       <label class="group-setting"><input type="checkbox" id="showGroupCounts" ${pollData.showGroupCounts ? "checked" : ""}> Show group counts to participants</label>
     </div>
     <div class="ruled-section">
+      <h2>Meeting duration</h2>
+      <p class="desc">This sets the length of calendar holds for participants.</p>
+      <select id="durationMinutes"><option value="30">30 minutes</option><option value="60">1 hour</option><option value="90">1 hour 30 minutes</option><option value="120">2 hours</option><option value="180">3 hours</option></select>
+    </div>
+    <div class="ruled-section">
       <h2>Response deadline</h2>
       <p class="desc">After this passes, participants can't submit or change responses.</p>
       <div id="deadlineControls"></div>
@@ -400,6 +413,15 @@ function renderOrganizerView() {
     try { const updated = await updatePoll({showGroupCounts:checkbox.checked}); pollData.showGroupCounts = updated.showGroupCounts; }
     catch (err) { checkbox.checked = !checkbox.checked; saveError(err); }
     finally { checkbox.disabled = false; }
+  });
+  const durationSelect = document.getElementById("durationMinutes");
+  durationSelect.value = String(pollData.durationMinutes || 60);
+  durationSelect.addEventListener("change", async () => {
+    const old = pollData.durationMinutes || 60;
+    durationSelect.disabled = true;
+    try { const updated = await updatePoll({durationMinutes:Number(durationSelect.value)}); pollData.durationMinutes = updated.durationMinutes; }
+    catch (err) { durationSelect.value = String(old); saveError(err); }
+    finally { durationSelect.disabled = false; }
   });
   document.getElementById("copyParticipantLink").onclick = event => copyWithFeedback(event.currentTarget, participantLink);
   document.getElementById("copyOrganizerLink").onclick = event => copyWithFeedback(event.currentTarget, location.href);
