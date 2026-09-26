@@ -40,6 +40,8 @@ exports.handler = async (event) => {
   const rawMustAttend = Array.isArray(body.mustAttend) ? body.mustAttend : [];
   const deadlineIso = body.deadlineIso ? String(body.deadlineIso) : "";
   const organizerTimezone = (body.organizerTimezone || "").trim();
+  const durationMinutes = body.durationMinutes === undefined ? 60 : Number(body.durationMinutes);
+  if (![30, 60, 90, 120, 180].includes(durationMinutes)) return json(400, {error:"Choose a valid meeting duration."});
 
   if (!title || title.length > 140) {
     return { statusCode: 400, body: JSON.stringify({ error: "Poll title is required." }) };
@@ -89,6 +91,7 @@ exports.handler = async (event) => {
       finalized_slot_id: "",
       organizer_timezone: organizerTimezone,
       organizer_token_hash: hashToken(organizerToken),
+      duration_minutes: durationMinutes,
     });
 
     return {

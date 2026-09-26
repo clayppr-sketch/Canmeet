@@ -53,6 +53,10 @@ exports.handler = async (event) => {
     if (typeof body.showGroupCounts === "boolean") {
       pollRow.set("show_group_counts", String(body.showGroupCounts));
     }
+    if (body.durationMinutes !== undefined) {
+      if (![30, 60, 90, 120, 180].includes(Number(body.durationMinutes))) return json(400, {error:"Choose a valid meeting duration."});
+      pollRow.set("duration_minutes", Number(body.durationMinutes));
+    }
     // Must-Attend roster update
     if (Array.isArray(body.mustAttend)) {
       if (body.mustAttend.length > 40 || new Set(body.mustAttend.map(normalize)).size !== body.mustAttend.length) return json(400, {error:"Must-Attend names must be unique (up to 40)."});
@@ -116,7 +120,7 @@ exports.handler = async (event) => {
 
     const proposed = JSON.parse(pollRow.get("slots_json") || "[]");
     const deadline = pollRow.get("deadline_iso");
-    if (deadline && (Date.parse(deadline) <= Date.now() || proposed.some(s => Date.parse(s.iso) <= Date.parse(deadline)))) return json(400, {error:"Deadline must be in the future and before each proposed time."});
+    if (deadline && ((typeof body.deadlineIso === "string" && Date.parse(deadline) <= Date.now()) || proposed.some(s => Date.parse(s.iso) <= Date.parse(deadline)))) return json(400, {error:"Deadline must be before each proposed time; a newly set deadline must be in the future."});
     if ((pollRow.get("title") || "").length > 140) return json(400, {error:"Title is too long."});
     await pollRow.save();
 
@@ -130,6 +134,7 @@ exports.handler = async (event) => {
         deadlineIso: pollRow.get("deadline_iso") || null,
         finalizedSlotId: pollRow.get("finalized_slot_id") || null,
         showGroupCounts: pollRow.get("show_group_counts") !== "false",
+        durationMinutes: Number(pollRow.get("duration_minutes")) || 60,
       }),
     };
   } catch (err) {

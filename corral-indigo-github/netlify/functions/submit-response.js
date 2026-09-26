@@ -1,5 +1,6 @@
-const {normalize, validName, json} = require("./lib/security");
-const { getDoc, getPollsSheet, getResponsesSheet } = require("./lib/sheets");
+const crypto = require("crypto");
+const {hashToken, normalize, validName, json} = require("./lib/security");
+const { getDoc, getPollsSheet, getResponsesSheet, getCalendarSheet } = require("./lib/sheets");
 
 function normalizeName(n) {
   return n.trim().replace(/\s+/g, " ").toLowerCase();
@@ -114,11 +115,16 @@ exports.handler = async (event) => {
       submitted_at: now,
     }));
 
+    const calendarToken = crypto.randomBytes(32).toString("base64url");
+    await (await getCalendarSheet(doc)).addRow({
+      poll_id: pollId, participant_name: displayName,
+      token_hash: hashToken(calendarToken), created_at: now,
+    });
     await responsesSheet.addRows(rowsToAdd);
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ ok: true, linkedMustAttend }),
+      body: JSON.stringify({ ok: true, linkedMustAttend, calendarToken }),
     };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };

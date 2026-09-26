@@ -12,7 +12,8 @@ exports.handler = async event => {
     const slots = JSON.parse(row.get('slots_json') || '[]');
     const mustAttend = JSON.parse(row.get('must_attend_json') || '[]');
     const showGroupCounts = row.get('show_group_counts') !== 'false';
-    const common = {pollId, title:row.get('title'), slots, mustAttend, showGroupCounts,
+    const durationMinutes = Number(row.get('duration_minutes')) || 60;
+    const common = {pollId, title:row.get('title'), slots, mustAttend, showGroupCounts, durationMinutes,
       deadlineIso:row.get('deadline_iso') || null, finalizedSlotId:row.get('finalized_slot_id') || null};
     // Send the organizer token in a header; it never appears in a request URL or server log.
     const isOrganizer = authorized(row, event.headers?.['x-organizer-token'] || event.headers?.['X-Organizer-Token']);
