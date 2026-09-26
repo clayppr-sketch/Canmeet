@@ -459,18 +459,6 @@ button.primary { background:#4f46e5; border-radius:10px; }.button.primary:hover,
 @media(max-width:900px) { .hero-inner { gap:32px; }.hero-photo-frame img { height:360px; }.nav-origin { display:none; } }
 @media(max-width:700px) { .new-nav { padding:0 20px; }.nav-actions { gap:12px; }.nav-actions .nav-create { display:none; }.new-hero { padding:40px 0 95px; }.hero-inner { display:block; padding:0 24px; }.hero-copy h1 { font-size:44px; }.hero-copy p { font-size:16px; }.hero-visual { margin:48px 15px 0; }.hero-photo-frame img { height:300px; }.hero-floating-card { left:-15px; }.feature-strip { grid-template-columns:1fr; margin:-35px auto 45px; padding:0 24px; }.quick-start { flex-direction:column; }.quick-start button { width:100%; } }
 
-/* The source photo has a deliberately blurred left side. Keep the sharp group
-   in view when it is used as a standalone card on the new landing page. */
-.hero-photo-frame { overflow: hidden; }
-.hero-photo-frame img {
-  object-position: right center;
-  transform: scale(1.22);
-  transform-origin: right center;
-}
-@media (max-width: 700px) {
-  .hero-photo-frame img { transform: scale(1.4); }
-}
-
 /* Organizer decisions first; secondary editing controls stay within reach. */
 .decision-summary { margin:4px 0 14px; padding:21px 23px; background:#eef2ff; border:1px solid #c7d2fe; border-radius:14px; }
 .decision-summary.ok { background:#edf9f5; border-color:#b5dfcf; }
