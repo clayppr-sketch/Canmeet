@@ -1,9 +1,0 @@
-{
-  "name": "must-attend-scheduler",
-  "version": "1.0.0",
-  "description": "Must-Attend scheduling poll with fair scheduling recommendations",
-  "dependencies": {
-    "google-spreadsheet": "^4.1.4",
-    "google-auth-library": "^9.15.0"
-  }
-}
