@@ -23,8 +23,18 @@
       <div class="hero-assurance"><span aria-hidden="true">✓</span> No sign-up. No email addresses collected.</div>
     </div>
     <div class="hero-visual">
-      <div class="hero-photo-frame"><img src="/hero-people.jpg" alt="Colleagues working together around a table"></div>
+      <div class="hero-photo-frame" id="heroSlideshow" aria-label="Corral in three moments">
+        <img class="hero-slide is-active" src="/hero-plan.webp" alt="A diverse group plans a get-together over coffee" width="1672" height="941" fetchpriority="high">
+        <img class="hero-slide" src="/hero-vote.webp" alt="Participants respond to proposed times on their phones" width="1774" height="887">
+        <img class="hero-slide" src="/hero-meet.webp" alt="The group meets after finding a time together" width="1672" height="941">
+      </div>
       <div class="hero-floating-card" aria-hidden="true"><span class="floating-check">✓</span><span><strong>Everyone essential is in</strong><small>Find a time with confidence</small></span></div>
+      <div class="slideshow-controls" aria-label="Picture slideshow">
+        <button type="button" class="slide-dot is-active" data-slide="0" aria-label="Show planning together" aria-current="true"></button>
+        <button type="button" class="slide-dot" data-slide="1" aria-label="Show people voting"></button>
+        <button type="button" class="slide-dot" data-slide="2" aria-label="Show the meeting"></button>
+        <button type="button" id="slidePause" class="slide-pause" aria-label="Pause slideshow">Pause</button>
+      </div>
     </div>
   </div>
 </main>
@@ -40,5 +50,40 @@
   <a class="feedback-link" href="/feedback.html">✎ Send feedback</a>
 </div>
 
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.hero-slide')];
+  const dots = [...document.querySelectorAll('.slide-dot')];
+  const pause = document.getElementById('slidePause');
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  let current = 0, timer = null, paused = false;
+  function show(index) {
+    current = index;
+    slides.forEach((slide, i) => {
+      slide.classList.toggle('is-active', i === index);
+      slide.setAttribute('aria-hidden', String(i !== index));
+    });
+    dots.forEach((dot, i) => {
+      dot.classList.toggle('is-active', i === index);
+      if (i === index) dot.setAttribute('aria-current', 'true');
+      else dot.removeAttribute('aria-current');
+    });
+  }
+  function start() {
+    clearInterval(timer);
+    timer = (!paused && !motion.matches) ? setInterval(() => show((current + 1) % slides.length), 6000) : null;
+  }
+  dots.forEach(dot => dot.addEventListener('click', () => { show(Number(dot.dataset.slide)); start(); }));
+  pause.addEventListener('click', () => {
+    paused = !paused;
+    pause.textContent = paused ? 'Play' : 'Pause';
+    pause.setAttribute('aria-label', paused ? 'Play slideshow' : 'Pause slideshow');
+    start();
+  });
+  motion.addEventListener('change', start);
+  show(0);
+  start();
+})();
+</script>
 </body>
 </html>
