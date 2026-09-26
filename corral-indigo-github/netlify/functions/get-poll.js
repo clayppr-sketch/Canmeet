@@ -11,12 +11,12 @@ exports.handler = async event => {
     if (!row) return json(404, {error:'Poll not found.'});
     const slots = JSON.parse(row.get('slots_json') || '[]');
     const mustAttend = JSON.parse(row.get('must_attend_json') || '[]');
-    const common = {pollId, title:row.get('title'), slots, mustAttend,
+    const showGroupCounts = row.get('show_group_counts') !== 'false';
+    const common = {pollId, title:row.get('title'), slots, mustAttend, showGroupCounts,
       deadlineIso:row.get('deadline_iso') || null, finalizedSlotId:row.get('finalized_slot_id') || null};
     // Send the organizer token in a header; it never appears in a request URL or server log.
-    if (!authorized(row, event.headers?.['x-organizer-token'] || event.headers?.['X-Organizer-Token'])) {
-      return json(200, common);
-    }
+    const isOrganizer = authorized(row, event.headers?.['x-organizer-token'] || event.headers?.['X-Organizer-Token']);
+    if (!isOrganizer && !showGroupCounts) return json(200, common);
     const responseRows = await (await getResponsesSheet(doc)).getRows();
     const names = new Map();
     for (const r of responseRows) {
@@ -40,6 +40,16 @@ exports.handler = async event => {
       responses[entry.name] = entry.slots;
       linkedMustAttend[entry.name] = linked;
     }
-    return json(200, {...common, participants:Object.keys(responses), responses, linkedMustAttend});
+    const groupCounts = Object.fromEntries(slots.map(s => [s.id, {yes:0, ifNeeded:0, no:0}]));
+    for (const answers of Object.values(responses)) {
+      for (const slot of slots) {
+        const answer = answers[slot.id];
+        if (answer === 'yes') groupCounts[slot.id].yes++;
+        else if (answer === 'if_needed') groupCounts[slot.id].ifNeeded++;
+        else if (answer === 'no') groupCounts[slot.id].no++;
+      }
+    }
+    if (!isOrganizer) return json(200, {...common, groupCounts});
+    return json(200, {...common, groupCounts, participants:Object.keys(responses), responses, linkedMustAttend});
   } catch (err) { console.error('get-poll failed', err); return json(500, {error:'Unable to load poll.'}); }
 };

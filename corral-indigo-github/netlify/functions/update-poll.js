@@ -50,6 +50,9 @@ exports.handler = async (event) => {
     }
 
     if (!authorized(pollRow, body.organizerToken)) return json(403, {error:"Private organizer link required."});
+    if (typeof body.showGroupCounts === "boolean") {
+      pollRow.set("show_group_counts", String(body.showGroupCounts));
+    }
     // Must-Attend roster update
     if (Array.isArray(body.mustAttend)) {
       if (body.mustAttend.length > 40 || new Set(body.mustAttend.map(normalize)).size !== body.mustAttend.length) return json(400, {error:"Must-Attend names must be unique (up to 40)."});
@@ -126,6 +129,7 @@ exports.handler = async (event) => {
         mustAttend: JSON.parse(pollRow.get("must_attend_json") || "[]"),
         deadlineIso: pollRow.get("deadline_iso") || null,
         finalizedSlotId: pollRow.get("finalized_slot_id") || null,
+        showGroupCounts: pollRow.get("show_group_counts") !== "false",
       }),
     };
   } catch (err) {
