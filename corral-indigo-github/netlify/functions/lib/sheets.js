@@ -11,6 +11,7 @@ const POLLS_HEADERS = [
   "finalized_slot_id",
   "organizer_timezone",
   "organizer_token_hash",
+  "show_group_counts",
 ];
 const RESPONSES_HEADERS = [
   "poll_id",
