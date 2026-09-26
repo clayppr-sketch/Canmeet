@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feedback — Corral</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="top-nav">
+  <div style="display:flex; align-items:center; gap:16px;">
+    <a href="/" class="landing-logo" style="text-decoration:none; font-size:16px;">Corral<span class="beta-tag">Beta</span></a>
+  </div>
+  <div class="top-nav-links">
+    <a href="/">← Back to Corral</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="masthead">
+    <div class="eyebrow">Beta feedback</div>
+    <h1>How's it going so far?</h1>
+    <p class="sub">
+      What's working, what isn't — both are genuinely useful. This goes straight
+      to the person building Corral, not a support queue.
+    </p>
+  </div>
+
+  <div class="panel" id="formPanel">
+    <div class="field-block">
+      <label class="field-label">What's working well?</label>
+      <textarea id="workingWell" rows="4" placeholder="e.g. Creating a poll was quick, and the Must-Attend feature caught a conflict I would have missed." style="width:100%; border:1px solid var(--rule-strong); border-radius:6px; padding:10px 12px; font-size:14px; color:var(--ink); background:var(--paper); font-family:inherit; resize:vertical;"></textarea>
+    </div>
+
+    <div class="field-block">
+      <label class="field-label">What could be changed or improved?</label>
+      <textarea id="couldImprove" rows="4" placeholder="e.g. The date picker was confusing on mobile, or: I expected to be able to edit a proposed time after creating the poll." style="width:100%; border:1px solid var(--rule-strong); border-radius:6px; padding:10px 12px; font-size:14px; color:var(--ink); background:var(--paper); font-family:inherit; resize:vertical;"></textarea>
+      <div class="field-error" id="messageError" style="display:none;"></div>
+    </div>
+
+    <button class="primary" id="submitBtn" type="button">Send feedback</button>
+    <div id="successMsg" style="display:none; margin-top:14px; color:var(--teal); font-size:14px;">
+      ✓ Thanks — this landed directly with us.
+    </div>
+    <div id="submitError" class="field-error" style="display:none; margin-top:10px;"></div>
+  </div>
+</div>
+
+<script>
+const workingWellInput = document.getElementById("workingWell");
+const couldImproveInput = document.getElementById("couldImprove");
+const messageError = document.getElementById("messageError");
+const submitBtn = document.getElementById("submitBtn");
+const successMsg = document.getElementById("successMsg");
+const submitError = document.getElementById("submitError");
+
+async function submitFeedback() {
+  messageError.style.display = "none";
+  submitError.style.display = "none";
+  successMsg.style.display = "none";
+
+  const workingWell = workingWellInput.value.trim();
+  const couldImprove = couldImproveInput.value.trim();
+
+  if (!workingWell && !couldImprove) {
+    messageError.textContent = "Fill in at least one of the fields above before sending.";
+    messageError.style.display = "block";
+    return;
+  }
+
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Sending…";
+
+  try {
+    const res = await fetch("/api/submit-feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workingWell,
+        couldImprove,
+        pageContext: document.referrer || "(no referrer)",
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not send feedback.");
+
+    successMsg.style.display = "block";
+    workingWellInput.value = "";
+    couldImproveInput.value = "";
+    submitBtn.textContent = "Send feedback";
+  } catch (err) {
+    submitError.textContent = err.message;
+    submitError.style.display = "block";
+    submitBtn.textContent = "Send feedback";
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+submitBtn.addEventListener("click", submitFeedback);
+</script>
+</body>
+</html>
