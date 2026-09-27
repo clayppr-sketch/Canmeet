@@ -45,6 +45,8 @@ if (!pollId) {
 
 let pollData = null;
 const organizerHeaders = { "X-Organizer-Token": organizerToken };
+const pollReadUrl = () => `/api/get-poll?id=${encodeURIComponent(pollId)}${isOrganizer ? "" : "&public=1"}`;
+const pollReadOptions = () => isOrganizer ? {headers:organizerHeaders, cache:"no-store"} : {cache:"no-store"};
 async function updatePoll(changes) {
   const res = await fetch("/api/update-poll", {
     method: "POST", headers: {"Content-Type":"application/json"},
@@ -76,7 +78,7 @@ function reminderText(names) {
 
 async function loadPoll() {
   try {
-    const res = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {headers: organizerHeaders, cache: "no-store"});
+    const res = await fetch(pollReadUrl(), pollReadOptions());
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not load poll.");
     pollData = data;
@@ -84,7 +86,8 @@ async function loadPoll() {
     if (isOrganizer) renderOrganizerView();
     else renderParticipantView();
   } catch (err) {
-    app.innerHTML = `<div class="error-state">${escapeHtml(err.message)}</div>`;
+    app.innerHTML = `<div class="error-state"><p>${escapeHtml(err.message)}</p><button class="ghost" id="retryLoad" type="button">Try again</button></div>`;
+    document.getElementById("retryLoad").onclick = () => { app.innerHTML = '<div class="loading">Loading poll…</div>'; loadPoll(); };
   }
 }
 
@@ -110,7 +113,7 @@ function finalizedBanner(slots) {
 
 // ---------------- Participant view ----------------
 function renderParticipantView() {
-  const { title, slots, mustAttend } = pollData;
+  const { title, slots } = pollData;
   const closed = !!pollData.finalizedSlotId || isPastDeadline(pollData.deadlineIso);
 
   app.innerHTML = `
@@ -130,18 +133,10 @@ function renderParticipantView() {
           <input type="text" id="participantFirst" placeholder="First name" ${closed ? "disabled" : ""}>
           <input type="text" id="participantLast" placeholder="Last name" ${closed ? "disabled" : ""}>
         </div>
-        <div class="field-error" id="nameError" style="display:none;"></div>
-        <div id="matchNotice" style="margin-top:8px; font-size:13.5px;"></div>
-        <div id="manualLinkBlock" style="display:none; margin-top:8px;">
-          <label class="field-label" style="font-weight:500;">Are you one of the Must-Attend participants under a different spelling?</label>
-          <select id="manualLinkSelect">
-            <option value="">No — I'm a regular participant</option>
-            ${mustAttend.map((m) => `<option value="${escapeHtml(m)}">Yes — I'm ${escapeHtml(m)}</option>`).join("")}
-          </select>
-        </div>
       </div>
 
       <div class="slot-chooser-head"><div><strong>Proposed times</strong><p>Swipe sideways or use the arrows. Choose times you can actually attend.</p></div><span id="answerProgress">0 of ${slots.length} answered</span></div>
+      ${pollData.showGroupCounts ? '<button class="ghost refresh-counts" id="refreshGroupCounts" type="button">Refresh group totals</button>' : ''}
       <div class="slot-carousel" id="slotForms" role="region" aria-label="Proposed meeting times" tabindex="0"></div>
       <div class="slot-carousel-nav"><button class="ghost" id="prevSlotBtn" type="button" aria-label="Previous proposed time">← Previous</button><span id="slotPosition" aria-live="polite">Time 1 of ${slots.length}</span><button class="ghost" id="nextSlotBtn" type="button" aria-label="Next proposed time">Next →</button></div>
 
@@ -173,13 +168,21 @@ function renderParticipantView() {
     cards.push(block);
   });
   renderGroupCounts();
-  if (!window.corralParticipantRefresh && pollData.showGroupCounts) {
-    window.corralParticipantRefresh = setInterval(async () => {
+  const refreshCounts = document.getElementById("refreshGroupCounts");
+  if (refreshCounts) {
+    refreshCounts.onclick = async () => {
+      refreshCounts.disabled = true;
+      refreshCounts.textContent = "Refreshing…";
       try {
-        const res = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {cache:"no-store"});
-        if (res.ok) { pollData = await res.json(); renderGroupCounts(document.getElementById("successMsg")?.style.display === "block"); }
-      } catch (_) { /* Keep the last visible totals until the next refresh. */ }
-    }, 30000);
+        const res = await fetch(pollReadUrl(), pollReadOptions());
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not refresh group totals.");
+        pollData = data;
+        renderGroupCounts(document.getElementById("successMsg")?.style.display === "block");
+        refreshCounts.textContent = "Totals updated";
+      } catch (err) { refreshCounts.textContent = err.message; }
+      setTimeout(() => { if (refreshCounts.isConnected) { refreshCounts.disabled = false; refreshCounts.textContent = "Refresh group totals"; } }, 20000);
+    };
   }
 
   function activeIndex() {
@@ -207,34 +210,6 @@ function renderParticipantView() {
   updatePosition(); updateProgress();
 
   if (closed) return;
-
-  const firstInput = document.getElementById("participantFirst");
-  const lastInput = document.getElementById("participantLast");
-  const nameError = document.getElementById("nameError");
-  const matchNotice = document.getElementById("matchNotice");
-  const manualLinkBlock = document.getElementById("manualLinkBlock");
-
-  function checkNameMatch() {
-    const first = firstInput.value.trim();
-    const last = lastInput.value.trim();
-    nameError.style.display = "none";
-    matchNotice.innerHTML = "";
-    manualLinkBlock.style.display = "none";
-
-    if (!first && !last) return;
-    if (!first || !last) return; // wait until both are filled before matching
-
-    const value = `${first} ${last}`;
-    const exact = mustAttend.find((m) => normalizeName(m) === normalizeName(value));
-    if (exact) {
-      matchNotice.innerHTML = `<span style="color:var(--teal);">✓ Matched to Must-Attend participant <strong>${escapeHtml(exact)}</strong>.</span>`;
-    } else if (mustAttend.length > 0) {
-      matchNotice.innerHTML = `<span style="color:var(--ink-faint);">No exact Must-Attend match.</span>`;
-      manualLinkBlock.style.display = "block";
-    }
-  }
-  firstInput.addEventListener("input", checkNameMatch);
-  lastInput.addEventListener("input", checkNameMatch);
 
   document.getElementById("submitBtn").addEventListener("click", submitResponse);
 }
@@ -265,9 +240,6 @@ async function submitResponse() {
     responses[slot.id] = checked.value;
   }
 
-  const manualLinkSelect = document.getElementById("manualLinkSelect");
-  const manualLink = manualLinkSelect ? manualLinkSelect.value : "";
-
   const submitBtn = document.getElementById("submitBtn");
   submitBtn.disabled = true;
   submitBtn.textContent = "Submitting…";
@@ -276,16 +248,14 @@ async function submitResponse() {
     const res = await fetch("/api/submit-response", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pollId, participantName: name, responses, manualLink }),
+      body: JSON.stringify({ pollId, participantName: name, responses }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not submit response.");
 
     const successMsg = document.getElementById("successMsg");
     successMsg.style.display = "block";
-    successMsg.textContent = data.linkedMustAttend
-      ? `✓ Response recorded, linked as Must-Attend participant "${data.linkedMustAttend}".`
-      : "✓ Response recorded. Thank you!";
+    successMsg.textContent = "✓ Response recorded. Thank you! Group totals may take about 20 seconds to update.";
     submitBtn.textContent = "Submitted";
     if (data.calendarToken) {
       const url = `${location.origin}/api/calendar?token=${encodeURIComponent(data.calendarToken)}`;
@@ -294,10 +264,7 @@ async function submitResponse() {
       panel.innerHTML = `<strong>Add my Yes times to my calendar</strong><p>Subscribe to this private calendar link to see tentative holds. When the organizer confirms a time, the other holds disappear after your calendar refreshes. Keep this link private.</p><div class="share-actions"><button class="ghost" id="copyCalendarBtn" type="button">Copy calendar link</button><a class="ghost calendar-open" href="${escapeHtml(url.replace(/^https:/, "webcal:"))}">Open calendar app</a><a class="ghost calendar-open" href="${escapeHtml(url + '&download=1')}">Download .ics file</a></div><p class="desc">For Google Calendar, use “Add calendar → From URL” on its website and paste the copied link. A downloaded file is a one-time copy; its unused holds must be removed manually.</p>`;
       document.getElementById("copyCalendarBtn").onclick = event => copyWithFeedback(event.currentTarget, url);
     }
-    try {
-      const latest = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {cache:"no-store"});
-      if (latest.ok) { pollData = await latest.json(); renderGroupCounts(true); }
-    } catch (_) { /* The response was saved; counts can be refreshed later. */ }
+    renderGroupCounts(true);
   } catch (err) {
     submitError.textContent = err.message;
     submitError.style.display = "block";
@@ -387,6 +354,7 @@ function renderOrganizerView() {
     <div class="ruled-section">
       <h2>Responses</h2>
       <p class="desc">Who said what, at a glance. MUST tags mark Must-Attend participants.</p>
+      <div class="share-actions"><button class="ghost" id="refreshResultsBtn" type="button">Refresh results</button><span id="refreshStatus" class="refresh-status">Updates about once a minute.</span></div>
       <div id="rosterGrid"></div>
     </div>
 
@@ -425,6 +393,7 @@ function renderOrganizerView() {
   });
   document.getElementById("copyParticipantLink").onclick = event => copyWithFeedback(event.currentTarget, participantLink);
   document.getElementById("copyOrganizerLink").onclick = event => copyWithFeedback(event.currentTarget, location.href);
+  document.getElementById("refreshResultsBtn").onclick = () => refreshOrganizerResults(true);
   document.getElementById("emailSelfLink").onclick = () => mailDraft("My private Corral organizer link", `Keep this private link to manage “${pollData.title}”:\n\n${location.href}`);
   document.getElementById("addTimeBtn").onclick = async () => {
     const input = document.getElementById("newSlotInput");
@@ -735,19 +704,33 @@ function renderOrganizerView() {
     });
   }
 
-  // Poll for new responses periodically so the organizer sees live updates.
-  if (!window.corralRefreshTimer) window.corralRefreshTimer = setInterval(async () => {
-    try {
-      const res = await fetch(`/api/get-poll?id=${encodeURIComponent(pollId)}`, {headers: organizerHeaders, cache: "no-store"});
-      const data = await res.json();
-      if (res.ok) {
-        pollData = data;
-        renderResults();
-      }
-    } catch (err) {
-      // silent — next interval will retry
-    }
-  }, 8000);
+  if (!window.corralRefreshTimer) window.corralRefreshTimer = setInterval(() => {
+    if (!document.hidden) refreshOrganizerResults(false);
+  }, 60000);
+}
+let lastOrganizerRefresh = 0;
+let organizerRefreshInFlight = false;
+async function refreshOrganizerResults(manual) {
+  if (organizerRefreshInFlight || Date.now() - lastOrganizerRefresh < 15000) return;
+  organizerRefreshInFlight = true;
+  lastOrganizerRefresh = Date.now();
+  const button = document.getElementById("refreshResultsBtn");
+  const status = document.getElementById("refreshStatus");
+  if (button) button.disabled = true;
+  if (status) status.textContent = "Checking for responses…";
+  try {
+    const res = await fetch(pollReadUrl(), pollReadOptions());
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not refresh results.");
+    pollData = data;
+    renderResults();
+    if (status) status.textContent = "Results updated.";
+  } catch (err) {
+    if (status) status.textContent = `${err.message} Your current results are still shown.`;
+  } finally {
+    organizerRefreshInFlight = false;
+    if (button) button.disabled = false;
+  }
 }
 </script>
 </body>
