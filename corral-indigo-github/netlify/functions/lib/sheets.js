@@ -13,6 +13,7 @@ const POLLS_HEADERS = [
   "organizer_token_hash",
   "show_group_counts",
   "duration_minutes",
+  "meeting_url",
 ];
 const RESPONSES_HEADERS = [
   "poll_id",
