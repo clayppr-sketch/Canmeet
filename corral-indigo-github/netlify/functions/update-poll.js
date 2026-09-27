@@ -109,13 +109,27 @@ exports.handler = async (event) => {
     if (typeof body.finalizedSlotId === "string") {
       if (body.finalizedSlotId === "") {
         pollRow.set("finalized_slot_id", "");
+        pollRow.set("meeting_url", "");
       } else {
         const currentSlots = JSON.parse(pollRow.get("slots_json") || "[]");
         if (!currentSlots.some((s) => s.id === body.finalizedSlotId)) {
           return { statusCode: 400, body: JSON.stringify({ error: "Unknown slot to finalize." }) };
         }
+        if (pollRow.get("finalized_slot_id") !== body.finalizedSlotId) pollRow.set("meeting_url", "");
         pollRow.set("finalized_slot_id", body.finalizedSlotId);
       }
+    }
+    if (body.meetingUrl !== undefined) {
+      if (typeof body.meetingUrl !== "string" || body.meetingUrl.length > 4000) return json(400, {error:"Meeting link is too long."});
+      let value = body.meetingUrl.trim();
+      if (value) {
+        let url;
+        try { url = new URL(value); } catch { return json(400, {error:"Enter a complete HTTPS meeting link."}); }
+        if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return json(400, {error:"Enter a complete HTTPS meeting link."});
+        if (!pollRow.get("finalized_slot_id")) return json(400, {error:"Finalize a time before adding a meeting link."});
+        value = url.href;
+      }
+      pollRow.set("meeting_url", value);
     }
 
     const proposed = JSON.parse(pollRow.get("slots_json") || "[]");
@@ -135,6 +149,7 @@ exports.handler = async (event) => {
         finalizedSlotId: pollRow.get("finalized_slot_id") || null,
         showGroupCounts: pollRow.get("show_group_counts") !== "false",
         durationMinutes: Number(pollRow.get("duration_minutes")) || 60,
+        meetingUrl: pollRow.get("finalized_slot_id") ? pollRow.get("meeting_url") || null : null,
       }),
     };
   } catch (err) { console.error('update-poll failed', err); return sheetsError(err); }

@@ -58,6 +58,8 @@ exports.handler = async event => {
         `SUMMARY:${escapeText((confirmed ? '' : 'Tentative: ') + poll.get('title'))}`,
         `STATUS:${confirmed ? 'CONFIRMED' : 'TENTATIVE'}`,
         'TRANSP:OPAQUE', 'END:VEVENT');
+      if (confirmed && poll.get('meeting_url')) lines.splice(lines.length - 1, 0,
+        `DESCRIPTION:${escapeText('Join meeting: ' + poll.get('meeting_url'))}`);
     }
     lines.push('END:VCALENDAR');
     return calendarResponse(lines.map(fold).join('\r\n') + '\r\n', event.queryStringParameters?.download === '1');

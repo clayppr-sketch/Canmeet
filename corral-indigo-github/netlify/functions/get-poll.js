@@ -13,8 +13,10 @@ exports.handler = async event => {
     const mustAttend = JSON.parse(row.get('must_attend_json') || '[]');
     const showGroupCounts = row.get('show_group_counts') !== 'false';
     const durationMinutes = Number(row.get('duration_minutes')) || 60;
+    const finalizedSlotId = row.get('finalized_slot_id') || null;
     const common = {pollId, title:row.get('title'), slots, showGroupCounts, durationMinutes,
-      deadlineIso:row.get('deadline_iso') || null, finalizedSlotId:row.get('finalized_slot_id') || null};
+      deadlineIso:row.get('deadline_iso') || null, finalizedSlotId,
+      meetingUrl: finalizedSlotId ? row.get('meeting_url') || null : null};
     // The explicitly public URL cannot return organizer data, even if a token header is sent.
     const publicView = event.queryStringParameters?.public === '1';
     const isOrganizer = !publicView && authorized(row, event.headers?.['x-organizer-token'] || event.headers?.['X-Organizer-Token']);
