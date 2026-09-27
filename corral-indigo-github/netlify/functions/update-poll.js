@@ -1,4 +1,4 @@
-const { authorized, normalize, validName, validIso, json } = require("./lib/security");
+const { authorized, normalize, validName, validIso, json, sheetsError } = require("./lib/security");
 const { getDoc, getPollsSheet } = require("./lib/sheets");
 
 function hasFirstAndLast(name) {
@@ -137,7 +137,5 @@ exports.handler = async (event) => {
         durationMinutes: Number(pollRow.get("duration_minutes")) || 60,
       }),
     };
-  } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
-  }
+  } catch (err) { console.error('update-poll failed', err); return sheetsError(err); }
 };

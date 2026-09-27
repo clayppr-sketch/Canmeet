@@ -1,5 +1,5 @@
 const { getDoc, getPollsSheet, getResponsesSheet, getCalendarSheet } = require('./lib/sheets');
-const { hashToken, normalize, json } = require('./lib/security');
+const { hashToken, normalize, json, sheetsError } = require('./lib/security');
 
 const calendarResponse = (body, download) => ({
   statusCode: 200,
@@ -63,6 +63,6 @@ exports.handler = async event => {
     return calendarResponse(lines.map(fold).join('\r\n') + '\r\n', event.queryStringParameters?.download === '1');
   } catch (err) {
     console.error('calendar feed failed', err);
-    return json(500, {error:'Unable to load calendar.'});
+    return sheetsError(err);
   }
 };

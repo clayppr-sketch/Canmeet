@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const {hashToken, normalize, validName, validIso, json} = require("./lib/security");
+const {hashToken, normalize, validName, validIso, json, sheetsError} = require("./lib/security");
 const { getDoc, getPollsSheet, genId } = require("./lib/sheets");
 
 function slugify(str, index) {
@@ -98,7 +98,5 @@ exports.handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({ pollId, organizerToken, slots, mustAttend, title, deadlineIso, organizerTimezone }),
     };
-  } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
-  }
+  } catch (err) { console.error('create-poll failed', err); return sheetsError(err); }
 };

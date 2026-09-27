@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const {hashToken, normalize, validName, json} = require("./lib/security");
+const {hashToken, normalize, validName, json, sheetsError} = require("./lib/security");
 const { getDoc, getPollsSheet, getResponsesSheet, getCalendarSheet } = require("./lib/sheets");
 
 function normalizeName(n) {
@@ -27,7 +27,6 @@ exports.handler = async (event) => {
   const pollId = (body.pollId || "").trim();
   const participantName = (body.participantName || "").trim().replace(/\s+/g, " ");
   const responses = body.responses || {}; // { slotId: "yes"|"if_needed"|"no" }
-  const manualLink = body.manualLink ? String(body.manualLink).trim() : null;
 
   if (!pollId) {
     return { statusCode: 400, body: JSON.stringify({ error: "Missing poll id." }) };
@@ -92,11 +91,7 @@ exports.handler = async (event) => {
     // matching reliable, so no fuzzy fallback that could link the wrong person.
     let linkedMustAttend = null;
     const exact = mustAttend.find((m) => normalizeName(m) === normalizeName(participantName));
-    if (exact) {
-      linkedMustAttend = exact;
-    } else if (manualLink && mustAttend.some(m => normalize(m) === normalize(manualLink))) {
-      linkedMustAttend = manualLink;
-    }
+    if (exact) linkedMustAttend = exact;
 
     const responsesSheet = await getResponsesSheet(doc);
     const existing = (await responsesSheet.getRows()).filter(r => r.get("poll_id") === pollId);
@@ -127,6 +122,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({ ok: true, linkedMustAttend, calendarToken }),
     };
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    console.error('submit-response failed', err);
+    return sheetsError(err);
   }
 };

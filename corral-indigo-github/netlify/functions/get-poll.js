@@ -1,5 +1,5 @@
 const { getDoc, getPollsSheet, getResponsesSheet } = require('./lib/sheets');
-const { authorized, normalize, json } = require('./lib/security');
+const { authorized, normalize, json, sheetsError } = require('./lib/security');
 
 exports.handler = async event => {
   if (event.httpMethod !== 'GET') return json(405, {error:'Method not allowed'});
@@ -13,11 +13,16 @@ exports.handler = async event => {
     const mustAttend = JSON.parse(row.get('must_attend_json') || '[]');
     const showGroupCounts = row.get('show_group_counts') !== 'false';
     const durationMinutes = Number(row.get('duration_minutes')) || 60;
-    const common = {pollId, title:row.get('title'), slots, mustAttend, showGroupCounts, durationMinutes,
+    const common = {pollId, title:row.get('title'), slots, showGroupCounts, durationMinutes,
       deadlineIso:row.get('deadline_iso') || null, finalizedSlotId:row.get('finalized_slot_id') || null};
-    // Send the organizer token in a header; it never appears in a request URL or server log.
-    const isOrganizer = authorized(row, event.headers?.['x-organizer-token'] || event.headers?.['X-Organizer-Token']);
-    if (!isOrganizer && !showGroupCounts) return json(200, common);
+    // The explicitly public URL cannot return organizer data, even if a token header is sent.
+    const publicView = event.queryStringParameters?.public === '1';
+    const isOrganizer = !publicView && authorized(row, event.headers?.['x-organizer-token'] || event.headers?.['X-Organizer-Token']);
+    const publicResponse = data => ({...json(200, data), headers:{
+      'Content-Type':'application/json', 'Cache-Control':'no-store',
+      'Netlify-CDN-Cache-Control':'public, durable, max-age=20'
+    }});
+    if (!isOrganizer && !showGroupCounts) return publicView ? publicResponse(common) : json(200, common);
     const responseRows = await (await getResponsesSheet(doc)).getRows();
     const names = new Map();
     for (const r of responseRows) {
@@ -50,7 +55,7 @@ exports.handler = async event => {
         else if (answer === 'no') groupCounts[slot.id].no++;
       }
     }
-    if (!isOrganizer) return json(200, {...common, groupCounts});
-    return json(200, {...common, groupCounts, participants:Object.keys(responses), responses, linkedMustAttend});
-  } catch (err) { console.error('get-poll failed', err); return json(500, {error:'Unable to load poll.'}); }
+    if (!isOrganizer) return publicView ? publicResponse({...common, groupCounts}) : json(200, {...common, groupCounts});
+    return json(200, {...common, mustAttend, groupCounts, participants:Object.keys(responses), responses, linkedMustAttend});
+  } catch (err) { console.error('get-poll failed', err); return sheetsError(err); }
 };
