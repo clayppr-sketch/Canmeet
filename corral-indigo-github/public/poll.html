@@ -63,14 +63,14 @@ async function copyText(value) {
 }
 async function copyWithFeedback(button, value) {
   const copied = await copyText(value);
-  if (!copied) return;
   const original = button.dataset.originalLabel || button.textContent;
   button.dataset.originalLabel = original;
-  button.textContent = "✓ Copied";
+  button.textContent = copied ? "✓ Copied" : "Copy manually";
   clearTimeout(button.copyResetTimer);
   button.copyResetTimer = setTimeout(() => { if (button.isConnected) button.textContent = original; }, 2400);
 }
 function mailDraft(subject, body) { location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
+function escapeAttr(value) { return escapeHtml(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 function reminderText(names) {
   const deadline = pollData.deadlineIso ? `Please respond by ${formatViewerLocal(pollData.deadlineIso)}.\n\n` : "";
   return `Hi ${names.join(", ")},\n\nA quick reminder to add your availability for “${pollData.title}”. It takes about a minute.\n\n${deadline}${location.origin}/poll.html?id=${encodeURIComponent(pollId)}\n\nThank you.`;
@@ -108,7 +108,43 @@ function finalizedBanner(slots) {
   if (!pollData.finalizedSlotId) return "";
   const slot = slots.find((s) => s.id === pollData.finalizedSlotId);
   if (!slot) return "";
-  return `<div class="banner ok"><div class="title">✓ Meeting confirmed: ${escapeHtml(formatViewerLocal(slot.iso))}</div><div class="body">The organizer has locked in this time.</div></div>`;
+  const link = pollData.meetingUrl ? `<p><a href="${escapeAttr(pollData.meetingUrl)}" target="_blank" rel="noopener noreferrer">Join the meeting →</a></p>` : "";
+  return `<div class="banner ok"><div class="title">✓ Meeting confirmed: ${escapeHtml(formatViewerLocal(slot.iso))}</div><div class="body">The organizer has locked in this time. Times are shown in your timezone.${link}</div></div>`;
+}
+function confirmationText() {
+  const slot = pollData.slots.find(s => s.id === pollData.finalizedSlotId);
+  if (!slot) return "";
+  const time = `${formatViewerLocal(slot.iso)} (${viewerTimezone()})`;
+  const link = pollData.meetingUrl ? `\nJoin online: ${pollData.meetingUrl}` : "";
+  return `The time is confirmed for “${pollData.title}”.\n\n${time}${link}\n\nView the confirmed time in your timezone: ${location.origin}/poll.html?id=${encodeURIComponent(pollId)}`;
+}
+function renderConfirmationPanel() {
+  const panel = document.getElementById("confirmationPanel");
+  if (!panel) return;
+  if (!pollData.finalizedSlotId) { panel.style.display = "none"; panel.replaceChildren(); return; }
+  const oldInput = panel.querySelector("#meetingUrlInput");
+  const draft = panel.dataset.slotId === pollData.finalizedSlotId && oldInput === document.activeElement ? oldInput.value : null;
+  panel.dataset.slotId = pollData.finalizedSlotId;
+  panel.style.display = "block";
+  panel.innerHTML = `<h2>Send the confirmed plan</h2><p>The time is locked. Paste a Teams, Zoom, or other HTTPS meeting link if you have one, then save it. Anyone with the participant link can see it there.</p><div class="link-box"><input id="meetingUrlInput" type="url" placeholder="https://… meeting link" aria-label="Meeting link"><button class="ghost" id="saveMeetingUrl" type="button">Save link</button></div><div id="meetingUrlStatus" class="meeting-link-status" aria-live="polite"></div><p>Corral does not message participants automatically. Copy the confirmation below or open a draft in your email app and choose your recipients.</p><div class="share-actions"><button class="ghost" id="copyConfirmation" type="button">Copy confirmation</button><button class="ghost" id="emailConfirmation" type="button">✉ Open email draft</button></div>`;
+  const input = panel.querySelector("#meetingUrlInput");
+  input.value = draft ?? pollData.meetingUrl ?? "";
+  panel.querySelector("#saveMeetingUrl").onclick = async event => {
+    const button = event.currentTarget;
+    const status = panel.querySelector("#meetingUrlStatus");
+    button.disabled = true;
+    status.style.display = "block";
+    status.textContent = "Saving…";
+    try {
+      const result = await updatePoll({meetingUrl:input.value.trim()});
+      pollData.meetingUrl = result.meetingUrl;
+      input.value = result.meetingUrl || "";
+      status.textContent = result.meetingUrl ? "✓ Link saved. Participants can see it on the poll page." : "✓ Meeting link cleared.";
+    } catch (err) { status.textContent = err.message; }
+    finally { button.disabled = false; }
+  };
+  panel.querySelector("#copyConfirmation").onclick = event => copyWithFeedback(event.currentTarget, confirmationText());
+  panel.querySelector("#emailConfirmation").onclick = () => mailDraft(`Confirmed: ${pollData.title}`, confirmationText());
 }
 
 // ---------------- Participant view ----------------
@@ -304,6 +340,7 @@ function renderOrganizerView() {
     </div>
 
     <div id="decisionSummary" class="decision-summary" aria-live="polite"></div>
+    <div id="confirmationPanel" class="confirmation-panel" style="display:none;"></div>
 
     <div class="ruled-section">
       <h2>Share this poll</h2>
@@ -502,12 +539,16 @@ function renderOrganizerView() {
   async function finalizeSlot(slotId) {
     try { await updatePoll({finalizedSlotId:slotId}); } catch (err) { saveError(err); return; }
     pollData.finalizedSlotId = slotId;
+    pollData.meetingUrl = null;
     renderResults();
+    document.getElementById("confirmationPanel")?.scrollIntoView({behavior:"smooth", block:"center"});
+    document.getElementById("meetingUrlInput")?.focus({preventScroll:true});
   }
 
   async function unfinalize() {
     try { await updatePoll({finalizedSlotId:""}); } catch (err) { saveError(err); return; }
     pollData.finalizedSlotId = null;
+    pollData.meetingUrl = null;
     renderResults();
   }
 
@@ -647,6 +688,7 @@ function renderOrganizerView() {
     renderReminderControls();
 
     renderDecisionSummary(rec);
+    renderConfirmationPanel();
 
     const slotList = document.getElementById("slotList");
     if (pollData.slots.length === 0) {

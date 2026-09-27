@@ -294,10 +294,18 @@ async function createPoll() {
 document.getElementById("createBtn").addEventListener("click", createPoll);
 
 async function copyText(value) {
-  try { await navigator.clipboard.writeText(value); }
-  catch { window.prompt("Copy this text:", value); }
+  try { await navigator.clipboard.writeText(value); return true; }
+  catch { window.prompt("Select and copy this text:", value); return false; }
 }
-function copyField(inputId) { return copyText(document.getElementById(inputId).value); }
+async function copyWithFeedback(button, value) {
+  const copied = await copyText(value);
+  const original = button.dataset.originalLabel || button.textContent;
+  button.dataset.originalLabel = original;
+  button.textContent = copied ? "✓ Copied" : "Copy manually";
+  clearTimeout(button.copyResetTimer);
+  button.copyResetTimer = setTimeout(() => { if (button.isConnected) button.textContent = original; }, 2400);
+}
+function copyField(event, inputId) { return copyWithFeedback(event.currentTarget, document.getElementById(inputId).value); }
 function saveRecent(item) {
   try {
     const entries = JSON.parse(localStorage.getItem("corralOrganizerLinks") || "[]");
@@ -325,10 +333,10 @@ function inviteBody() {
 }
 function emailDraft(subject, body) { location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
 document.getElementById("emailSelfBtn").addEventListener("click", () => emailDraft("My private Corral organizer link", `Keep this private link to manage your poll:\n\n${document.getElementById("organizerLink").value}`));
-document.getElementById("copyInviteBtn").addEventListener("click", () => copyText(inviteBody()));
+document.getElementById("copyInviteBtn").addEventListener("click", event => copyWithFeedback(event.currentTarget, inviteBody()));
 document.getElementById("emailInviteBtn").addEventListener("click", () => emailDraft("Please add your availability", inviteBody()));
-document.getElementById("copyRespondBtn").addEventListener("click", () => copyField("respondLink"));
-document.getElementById("copyOrganizerBtn").addEventListener("click", () => copyField("organizerLink"));
+document.getElementById("copyRespondBtn").addEventListener("click", event => copyField(event, "respondLink"));
+document.getElementById("copyOrganizerBtn").addEventListener("click", event => copyField(event, "organizerLink"));
 </script>
 </body>
 </html>

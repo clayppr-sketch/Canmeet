@@ -516,6 +516,10 @@ button.primary { background:#4f46e5; border-radius:10px; }.button.primary:hover,
 @media(prefers-reduced-motion:reduce) { .hero-photo-frame .hero-slide { transition:none; } }
 .refresh-counts { margin:0 0 10px; font-size:12px; }
 .refresh-status { align-self:center; color:var(--ink-faint); font-size:12px; }
+.confirmation-panel { margin:18px 0 30px; padding:22px; border:1px solid #b9d9d2; border-radius:16px; background:#f1faf7; }
+.confirmation-panel h2 { margin:0 0 8px; font-size:20px; }
+.confirmation-panel p { margin:8px 0 14px; color:var(--ink-2); font-size:14px; line-height:1.5; }
+.meeting-link-status { min-height:18px; margin-top:8px; color:#087e78; font-size:13px; }
 .slot-date { font-size:17px; font-weight:750; letter-spacing:-.02em; line-height:1.3; min-height:44px; margin:0 0 15px; }
 .choice-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
 .choice { position:relative; display:block; cursor:pointer; min-width:0; }
