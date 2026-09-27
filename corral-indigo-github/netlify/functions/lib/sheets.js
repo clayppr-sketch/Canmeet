@@ -30,7 +30,10 @@ const FEEDBACK_HEADERS = [
   "page_context",
 ];
 
-async function getDoc() {
+let cachedDocPromise;
+let cachedDocUntil = 0;
+const sheetPromises = new Map();
+async function createDoc() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const rawKey = process.env.GOOGLE_PRIVATE_KEY;
   const sheetId = process.env.GOOGLE_SHEET_ID;
@@ -72,8 +75,30 @@ async function getDoc() {
   await doc.loadInfo();
   return doc;
 }
+async function getDoc() {
+  if (!cachedDocPromise || Date.now() >= cachedDocUntil) {
+    cachedDocUntil = Date.now() + 10 * 60 * 1000;
+    sheetPromises.clear();
+    cachedDocPromise = createDoc().catch(err => {
+      cachedDocPromise = null;
+      cachedDocUntil = 0;
+      throw err;
+    });
+  }
+  return cachedDocPromise;
+}
 
 async function ensureSheet(doc, title, headers) {
+  const key = `${doc.spreadsheetId}:${title}`;
+  if (sheetPromises.has(key)) return sheetPromises.get(key);
+  const promise = initializeSheet(doc, title, headers).catch(err => {
+    sheetPromises.delete(key);
+    throw err;
+  });
+  sheetPromises.set(key, promise);
+  return promise;
+}
+async function initializeSheet(doc, title, headers) {
   let sheet = doc.sheetsByTitle[title];
   if (!sheet) {
     sheet = await doc.addSheet({ title, headerValues: headers });
@@ -90,7 +115,8 @@ async function ensureSheet(doc, title, headers) {
     if (missing.length > 0) {
       await sheet.setHeaderRow([...sheet.headerValues, ...missing]);
     }
-  } catch {
+  } catch (err) {
+    if (Number(err?.response?.status || err?.status || err?.code) === 429 || /quota exceeded|rate limit/i.test(String(err?.message))) throw err;
     await sheet.setHeaderRow(headers);
   }
   return sheet;
